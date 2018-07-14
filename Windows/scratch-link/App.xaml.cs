@@ -80,6 +80,17 @@ namespace scratch_link
             }
 
             UpdateIconText();
+
+            ShowStartupNotification();
+        }
+
+        private void ShowStartupNotification()
+        {
+            var notificationTitle = "Scratch Link is ready!";
+            var notificationBody = "You may now use hardware extensions with Scratch.";
+
+            // the actual duration will be overridden based on system accessibility settings
+            _icon.ShowBalloonTip(10000, notificationTitle, notificationBody, ToolTipIcon.Info);
         }
 
         private void OnAddressInUse()
