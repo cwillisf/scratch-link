@@ -119,6 +119,12 @@
   <ItemGroup>
     <None Include="Resources\NotifyIcon.ico" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ScratchLinkWin32\ScratchLinkWin32.vcxproj">
+      <Project>{1b11c7d3-da24-4e3a-8fb9-355e14275c9a}</Project>
+      <Name>ScratchLinkWin32</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="..\scratchVersion.targets" />
 </Project>
