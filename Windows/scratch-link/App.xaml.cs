@@ -50,6 +50,8 @@ namespace scratch_link
                 }
             };
 
+            Debug.Print("Result: " + ScratchLink.Win32.RunBluetoothSecurityWorkaround());
+
             _sessionManagers = new SortedDictionary<string, SessionManager>
             {
                 [SDMPath.BLE] = new SessionManager(webSocket => new BLESession(webSocket)),

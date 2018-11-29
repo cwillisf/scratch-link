@@ -2,9 +2,10 @@
 
 using namespace System;
 
-namespace ScratchLinkWin32 {
-	public ref class Class1
+namespace ScratchLink {
+	public ref class Win32
 	{
-		// TODO: Add your methods for this class here.
+	public:
+		static void RunBluetoothSecurityWorkaround();
 	};
 }
