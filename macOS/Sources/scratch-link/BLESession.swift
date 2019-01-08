@@ -275,6 +275,20 @@ class BLESession: Session, SwiftCBCentralManagerDelegate, SwiftCBPeripheralDeleg
         connectionCompletion = nil
     }
 
+    func getServices(withParams params: [String: Any], completion: @escaping JSONRPCCompletionHandler) throws {
+        if let allowedServices = allowedServices {
+            completion(allowedServices.map { id -> String in
+                return id.uuidString
+            }, nil)
+        } else {
+            completion(nil, JSONRPCError.invalidRequest(data: "getServices request in wrong state"))
+        }
+    }
+
+    func getCharacteristics(withParams params: [String: Any], completion: @escaping JSONRPCCompletionHandler) throws {
+        completion(42, nil)
+    }
+
     func write(withParams params: [String: Any], completion: @escaping JSONRPCCompletionHandler) throws {
         let buffer = try EncodingHelpers.decodeBuffer(fromJSON: params)
         let withResponse = params["withResponse"] as? Bool ?? false
@@ -539,6 +553,10 @@ class BLESession: Session, SwiftCBCentralManagerDelegate, SwiftCBPeripheralDeleg
             try discover(withParams: params, completion: completion)
         case "connect":
             try connect(withParams: params, completion: completion)
+        case "getServices":
+            try getServices(withParams: params, completion: completion)
+        case "getCharacteristics":
+            try getCharacteristics(withParams: params, completion: completion)
         case "write":
             try write(withParams: params, completion: completion)
         case "read":

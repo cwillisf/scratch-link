@@ -26,6 +26,10 @@
             <button id="connectBLE">Connect to discovered peripheral</button>
             <button id="getServicesBLE">Get services of connected peripheral</button>
         </div>
+        <div>
+            <button id="getCharacteristicsBLE">Get characteristics for service:</button>
+            <input id="serviceForGetCharacteristicsBLE" style="width:32em;" type="text" placeholder="Service UUID">
+        </div>
         <fieldset>
             <legend>Optional Services</legend>
             <textarea id="optionalServicesBLE" placeholder="Optional services, if any, separated by whitespace" style="width:20rem;height:3rem;"></textarea>
@@ -421,9 +425,7 @@
         }
 
         function getServicesBLE() {
-            Scratch.BLE.sendRemoteRequest (
-                'getServices'
-            ).then(
+            Scratch.BLE.sendRemoteRequest('getServices').then(
                 x => {
                     addLine(`getServices resolved to: ${stringify(x)}`);
                 },
