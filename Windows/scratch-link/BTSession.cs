@@ -173,6 +173,13 @@ namespace scratch_link
 
             var address = Convert.ToUInt64(id, 16);
             var bluetoothDevice = await BluetoothDevice.FromBluetoothAddressAsync(address);
+
+            // Don't expose non/existence of a particular peripheral ID when that device doesn't pass filters
+            if (bluetoothDevice == null || !DevicePassesFilters(bluetoothDevice.DeviceInformation))
+            {
+                throw JsonRpcException.InvalidParams("Cannot connect to requested peripheral");
+            }
+
             if (!bluetoothDevice.DeviceInformation.Pairing.IsPaired)
             {
                 if (parameters.TryGetValue("pin", out var pin))
@@ -273,6 +280,29 @@ namespace scratch_link
             }
         }
 
+        /// <summary>
+        /// Check if a particular device passes the post-discovery filters. This does not check filters implemented
+        /// at the device discovery level (through DeviceWatcher selectors) such as major & minor device class.
+        /// </summary>
+        private bool DevicePassesFilters(DeviceInformation deviceInformation)
+        {
+            // Note that we don't filter out by 'IsPresentPropertyName' here because we need to return devices
+            // which are paired and within discoverable range. However, 'IsPresentPropertyName' is set to False
+            // for paired devices that are discovered automatically from a cache, so we ignore that property
+            // and simply return all discovered devices.
+
+            if (_filterName != null && deviceInformation.Name != _filterName)
+            {
+                return false; // ignore
+            }
+            if (_filterNamePrefix != null && !deviceInformation.Name.StartsWith(_filterNamePrefix))
+            {
+                return false; // ignore
+            }
+
+            return true;
+        }
+
         #region Custom Pairing Event Handlers
 
         private void CustomOnPairingRequested(DeviceInformationCustomPairing sender,
@@ -316,20 +346,6 @@ namespace scratch_link
 
         private void PeripheralDiscoveredOrUpdated(DeviceInformation deviceInformation)
         {
-            // Note that we don't filter out by 'IsPresentPropertyName' here because we need to return devices
-            // which are paired and within discoverable range. However, 'IsPresentPropertyName' is set to False
-            // for paired devices that are discovered automatically from a cache, so we ignore that property
-            // and simply return all discovered devices.
-
-            if (_filterName != null && deviceInformation.Name != _filterName)
-            {
-                return; // ignore
-            }
-            if (_filterNamePrefix != null && !deviceInformation.Name.StartsWith(_filterNamePrefix))
-            {
-                return; // ignore
-            }
-
             deviceInformation.Properties.TryGetValue(BluetoothAddressPropertyName, out var address);
             deviceInformation.Properties.TryGetValue(SignalStrengthPropertyName, out var rssi);
             var peripheralId = ((string)address)?.Replace(":", "");
@@ -341,7 +357,10 @@ namespace scratch_link
                 new JProperty("rssi", rssi)
             };
 
-            SendRemoteRequest("didDiscoverPeripheral", peripheralInfo);
+            if (DevicePassesFilters(deviceInformation))
+            {
+                SendRemoteRequest("didDiscoverPeripheral", peripheralInfo);
+            }
         }
 
         private void EnumerationCompleted(DeviceWatcher sender, object args)
