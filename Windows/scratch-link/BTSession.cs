@@ -3,6 +3,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Rfcomm;
@@ -43,6 +44,22 @@ namespace scratch_link
         /// PIN code for auto-pairing
         /// </summary>
         private string _autoPairingCode = "0000";
+
+        /// <summary>
+        /// If non-null, discovery should only return a peripheral if its name is exactly this.
+        /// </summary>
+        private string _filterName = null;
+
+        /// <summary>
+        /// If non-null, discovery should only return a peripheral if its name starts with this.
+        /// </summary>
+        private string _filterNamePrefix = null;
+
+        /// <summary>
+        /// Peripheral IDs for discovered peripherals, whether or not they pass discovery filters.
+        /// Double-check filters before allowing a client to connect to any peripheral in this list!
+        /// </summary>
+        private readonly HashSet<DeviceInformation> _discoveredPeripherals = new HashSet<DeviceInformation>();
 
         private DeviceWatcher _watcher;
         private StreamSocket _connectedSocket;
@@ -106,9 +123,17 @@ namespace scratch_link
                 throw JsonRpcException.InvalidParams("majorDeviceClass and minorDeviceClass required");
             }
 
+            var filterName = parameters["name"]?.ToString();
+            var filterNamePrefix = parameters["namePrefix"]?.ToString();
+
             var deviceClass = BluetoothClassOfDevice.FromParts(major.Value, minor.Value,
                     BluetoothServiceCapabilities.None);
             var selector = BluetoothDevice.GetDeviceSelectorFromClassOfDevice(deviceClass);
+
+            if (_watcher != null)
+            {
+                _watcher.Stop();
+            }
 
             try
             {
@@ -122,6 +147,9 @@ namespace scratch_link
                 _watcher.EnumerationCompleted += EnumerationCompleted;
                 _watcher.Updated += PeripheralUpdated;
                 _watcher.Stopped += EnumerationStopped;
+                _filterName = filterName;
+                _filterNamePrefix = filterNamePrefix;
+                _discoveredPeripherals.Clear();
                 _watcher.Start();
             }
             catch (ArgumentException)
@@ -137,6 +165,12 @@ namespace scratch_link
                 throw JsonRpcException.InvalidRequest("Already connected");
             }
             var id = parameters["peripheralId"]?.ToObject<string>();
+
+            if (_discoveredPeripherals.Where(peripheral => peripheral.Id == id).Any())
+            {
+                throw JsonRpcException.InvalidParams("Cannot connect to non-discovered peripheral");
+            }
+
             var address = Convert.ToUInt64(id, 16);
             var bluetoothDevice = await BluetoothDevice.FromBluetoothAddressAsync(address);
             if (!bluetoothDevice.DeviceInformation.Pairing.IsPaired)
@@ -253,10 +287,48 @@ namespace scratch_link
 
         private void PeripheralDiscovered(DeviceWatcher sender, DeviceInformation deviceInformation)
         {
+            // Record deviceInformation here in case a later update event causes the peripheral to pass filters.
+            _discoveredPeripherals.Add(deviceInformation);
+            PeripheralDiscoveredOrUpdated(deviceInformation);
+        }
+
+        /// <summary>
+        /// Handle event when a discovered peripheral is updated
+        /// </summary>
+        /// <remarks>
+        /// In addition to updating stored info, having an event handler for <see cref="DeviceWatcher.Updated"/>
+        /// seems to be necessary for timely "didDiscoverPeripheral" notifications. If there is no handler, all
+        /// discovered peripherals are notified right before enumeration completes.
+        /// </remarks>
+        /// <param name="sender"></param>
+        /// <param name="args"></param>
+        private void PeripheralUpdated(DeviceWatcher sender, DeviceInformationUpdate args)
+        {
+            var deviceInfo = _discoveredPeripherals.FirstOrDefault(peripheral => peripheral.Id == args.Id);
+            if (deviceInfo == null)
+            {
+                Debug.Print($"Warning: received an update for unrecorded ID: {args.Id}");
+                return;
+            }
+            deviceInfo.Update(args);
+            PeripheralDiscoveredOrUpdated(deviceInfo);
+        }
+
+        private void PeripheralDiscoveredOrUpdated(DeviceInformation deviceInformation)
+        {
             // Note that we don't filter out by 'IsPresentPropertyName' here because we need to return devices
             // which are paired and within discoverable range. However, 'IsPresentPropertyName' is set to False
             // for paired devices that are discovered automatically from a cache, so we ignore that property
             // and simply return all discovered devices.
+
+            if (_filterName != null && deviceInformation.Name != _filterName)
+            {
+                return; // ignore
+            }
+            if (_filterNamePrefix != null && !deviceInformation.Name.StartsWith(_filterNamePrefix))
+            {
+                return; // ignore
+            }
 
             deviceInformation.Properties.TryGetValue(BluetoothAddressPropertyName, out var address);
             deviceInformation.Properties.TryGetValue(SignalStrengthPropertyName, out var rssi);
@@ -270,20 +342,6 @@ namespace scratch_link
             };
 
             SendRemoteRequest("didDiscoverPeripheral", peripheralInfo);
-        }
-
-        /// <summary>
-        /// Handle event when a discovered peripheral is updated
-        /// </summary>
-        /// <remarks>
-        /// This method does nothing, but having an event handler for <see cref="DeviceWatcher.Updated"/> seems to
-        /// be necessary for timely "didDiscoverPeripheral" notifications. If there is no handler, all discovered
-        /// peripherals are notified right before enumeration completes.
-        /// </remarks>
-        /// <param name="sender"></param>
-        /// <param name="args"></param>
-        private void PeripheralUpdated(DeviceWatcher sender, DeviceInformationUpdate args)
-        {
         }
 
         private void EnumerationCompleted(DeviceWatcher sender, object args)
